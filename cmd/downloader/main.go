@@ -42,7 +42,13 @@ func main() {
 	sqliteConn, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
+	if err != nil {
+		log.Fatalln("failed to open sqlite connection:", err)
+	}
 	gormDatabase, err := database.NewGorm(sqliteConn)
+	if err != nil {
+		log.Fatalln("failed to create sqlite database:", err)
+	}
 
 	localStorage := storage.NewLocalStorage(os.Getenv("STORAGE_ROOT"))
 	progressBar := func(res *http.Response, description string) io.Writer {
