@@ -21,22 +21,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	amqpConnection, err := amqp.Dial(os.Getenv("RABBITMQ_URL"))
-	if err != nil {
-		log.Fatalln("failed to start amqp connection:", err)
-	}
-
-	channel, err := amqpConnection.Channel()
-	if err != nil {
-		log.Fatalln("failed to start amqp channel:", err)
-	}
 
 	dsn := filepath.Join(os.Getenv("STORAGE_ROOT"), "sqlite.db")
 	sqliteConn, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
@@ -62,48 +51,76 @@ func main() {
 	localDownloader := media.NewDownloader(localStorage, progressBar, defaultClient)
 	useCase := usecase.NewDownload(localDownloader, gormDatabase)
 
-	messages, err := channel.Consume(
-		"media.downloads",
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatalln("failed to consume media downloads queue:", err)
+	consumer := func(m media.Media) error {
+		if err := useCase.Execute(ctx, m); err != nil {
+			log.Println("failed to consume message:", err)
+			if err := gormDatabase.SaveMedia(ctx, m); err == nil {
+				log.Println("saving in media database")
+				return nil
+			}
+			return err
+		}
+
+		return nil
 	}
 
-	go func() {
-		for message := range messages {
-			var m media.Media
-			if err := json.Unmarshal(message.Body, &m); err != nil {
-				log.Println("failed to unmarshal message", err)
-				_ = message.Ack(false)
-				continue
-			}
-
-			if err := useCase.Execute(ctx, m); err != nil {
-				log.Println("failed to consume message:", err)
-				_ = message.Nack(false, true)
-				continue
-			}
-
-			_ = message.Ack(false)
+	for {
+		amqpConnection, err := amqp.Dial(os.Getenv("RABBITMQ_URL"))
+		if err != nil {
+			log.Fatalln("failed to open amqp connection:", err)
 		}
-	}()
 
-	fmt.Println("all systems go!")
+		notify := amqpConnection.NotifyClose(make(chan *amqp.Error))
 
-	<-ctx.Done()
-	stop()
+		channel, err := amqpConnection.Channel()
+		if err != nil {
+			log.Fatalln("failed to open amqp channel:", err)
+		}
 
-	fmt.Println("shutting down...")
+		if err := channel.Qos(10, 0, false); err != nil {
+			log.Fatalln("failed to set channel qos:", err)
+		}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+		messages, err := channel.Consume(
+			"media.downloads",
+			"",
+			false,
+			false,
+			false,
+			false,
+			nil,
+		)
+		if err != nil {
+			log.Fatalln("failed to consume media downloads queue:", err)
+		}
 
-	_ = amqpConnection.Close()
-	fmt.Println("good bye")
+		for {
+			select {
+			case err = <-notify:
+				log.Println("connection lost", err)
+				break
+			case <-ctx.Done():
+				log.Println("shutting down...")
+				stop()
+				_ = channel.Close()
+				_ = amqpConnection.Close()
+				log.Fatalln("good bye")
+			case message := <-messages:
+				var m media.Media
+				if err := json.Unmarshal(message.Body, &m); err != nil {
+					log.Println("failed to unmarshal message", err)
+					_ = message.Ack(false)
+					continue
+				}
+
+				if err := consumer(m); err != nil {
+					fmt.Println(err)
+					_ = message.Nack(false, true)
+					continue
+				}
+
+				_ = message.Ack(false)
+			}
+		}
+	}
 }
