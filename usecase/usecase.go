@@ -49,6 +49,10 @@ func (d Download) Execute(ctx context.Context, m media.Media, provider string) e
 		var err error
 		if interceptor, ok := d.interceptors[provider]; ok {
 			if m, err = interceptor.Intercept(ctx, m); err != nil {
+				if errors.Is(err, status.ErrNotFound) {
+					return nil
+				}
+
 				return err
 			}
 		}
