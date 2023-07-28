@@ -51,8 +51,8 @@ func main() {
 	localDownloader := media.NewDownloader(localStorage, progressBar, defaultClient)
 	useCase := usecase.NewDownload(localDownloader, gormDatabase)
 
-	consumer := func(m media.Media) error {
-		if err := useCase.Execute(ctx, m); err != nil {
+	consumer := func(m media.Media, provider string) error {
+		if err := useCase.Execute(ctx, m, provider); err != nil {
 			log.Println("failed to consume message:", err)
 			if err := gormDatabase.SaveMedia(ctx, m); err == nil {
 				log.Println("saving in media database")
@@ -106,6 +106,11 @@ func main() {
 				_ = amqpConnection.Close()
 				log.Fatalln("good bye")
 			case message := <-messages:
+				var provider string
+				if p := message.Headers["provider"]; p != nil {
+					provider = p.(string)
+				}
+
 				var m media.Media
 				if err := json.Unmarshal(message.Body, &m); err != nil {
 					log.Println("failed to unmarshal message", err)
@@ -113,7 +118,7 @@ func main() {
 					continue
 				}
 
-				if err := consumer(m); err != nil {
+				if err := consumer(m, provider); err != nil {
 					fmt.Println(err)
 					_ = message.Nack(false, true)
 					continue

@@ -32,7 +32,7 @@ func NewDownload(downloader Downloader, db Database) *Download {
 	}
 }
 
-func (d Download) Execute(ctx context.Context, m media.Media) error {
+func (d Download) Execute(ctx context.Context, m media.Media, provider string) error {
 	if exists, err := d.db.ExistByURL(ctx, m.URL); err != nil {
 		return err
 	} else if exists {
