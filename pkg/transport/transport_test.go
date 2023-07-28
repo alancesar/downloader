@@ -114,3 +114,76 @@ func TestUserAgentRoundTripper_RoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthorizationRoundTripper_RoundTrip(t *testing.T) {
+	type fields struct {
+		provider TokenProvider
+		next     http.RoundTripper
+	}
+	type args struct {
+		r *http.Request
+	}
+	tests := []struct {
+		name            string
+		fields          fields
+		args            args
+		want            *http.Response
+		wantErr         bool
+		wantStoredToken string
+	}{
+		{
+			name: "Should bind with token from provider",
+			fields: fields{
+				provider: func() string {
+					return "some-token"
+				},
+				next: &testdata.FakedRoundTripper{},
+			},
+			args: args{
+				r: &http.Request{
+					Method: http.MethodPost,
+					URL:    parsedURL,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body:          io.NopCloser(strings.NewReader(testdata.SampleRequestBody)),
+					ContentLength: int64(len(testdata.SampleRequestBody)),
+				},
+			},
+			want: &http.Response{
+				Status:        http.StatusText(http.StatusOK),
+				StatusCode:    http.StatusOK,
+				Body:          io.NopCloser(strings.NewReader(testdata.SampleResponseBody)),
+				ContentLength: int64(len(testdata.SampleResponseBody)),
+				Request: &http.Request{
+					Method: http.MethodPost,
+					URL:    parsedURL,
+					Header: http.Header{
+						"Content-Type":  []string{"application/json"},
+						"Authorization": []string{"some-token"},
+					},
+					Body:          io.NopCloser(strings.NewReader(testdata.SampleRequestBody)),
+					ContentLength: int64(len(testdata.SampleRequestBody)),
+				},
+			},
+			wantStoredToken: "some-token",
+			wantErr:         false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &AuthorizationRoundTripper{
+				provider: tt.fields.provider,
+				next:     tt.fields.next,
+			}
+			got, err := p.RoundTrip(tt.args.r)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RoundTrip() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("RoundTrip() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
