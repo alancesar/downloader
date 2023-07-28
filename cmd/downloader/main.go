@@ -71,10 +71,6 @@ func main() {
 	consumer := func(m media.Media, provider string) error {
 		if err := useCase.Execute(ctx, m, provider); err != nil {
 			log.Println("failed to consume message:", err)
-			if err := gormDatabase.SaveMedia(ctx, m); err == nil {
-				log.Println("saving in media database")
-				return nil
-			}
 			return err
 		}
 
