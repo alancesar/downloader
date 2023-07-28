@@ -94,7 +94,7 @@ func main() {
 			log.Fatalln("failed to open amqp channel:", err)
 		}
 
-		if err := channel.Qos(10, 0, false); err != nil {
+		if err := channel.Qos(200, 0, false); err != nil {
 			log.Fatalln("failed to set channel qos:", err)
 		}
 
