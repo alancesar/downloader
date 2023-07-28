@@ -8,15 +8,10 @@ import (
 	"net/http"
 )
 
-const (
-	suffix = ".tmp"
-)
-
 type (
 	Storage interface {
 		Create(ctx context.Context, path string) (io.WriteCloser, error)
 		Exist(ctx context.Context, path string) (bool, error)
-		Rename(ctx context.Context, src, dst string) error
 		Remove(ctx context.Context, path string) error
 	}
 
@@ -68,8 +63,8 @@ func (d Downloader) Download(ctx context.Context, media Media) error {
 }
 
 func (d Downloader) write(ctx context.Context, response *http.Response, media Media) error {
-	temp := media.Path() + suffix
-	writer, err := d.storage.Create(ctx, temp)
+	path := media.Path()
+	writer, err := d.storage.Create(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -79,19 +74,19 @@ func (d Downloader) write(ctx context.Context, response *http.Response, media Me
 	go func() {
 		multiWriter := io.MultiWriter(writer, d.pb(response, fmt.Sprintf("%32.32s", media.Filename)))
 		if _, err = io.Copy(multiWriter, response.Body); err != nil {
-			_ = d.storage.Remove(ctx, temp)
+			_ = d.storage.Remove(ctx, path)
 			done <- err
 			return
 		}
 
-		done <- d.storage.Rename(ctx, temp, media.Path())
+		done <- nil
 	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			_ = writer.Close()
-			_ = d.storage.Remove(ctx, temp)
+			_ = d.storage.Remove(ctx, path)
 			return ctx.Err()
 		case err := <-done:
 			_ = writer.Close()

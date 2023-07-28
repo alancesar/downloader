@@ -37,12 +37,6 @@ func (l Local) Remove(_ context.Context, path string) error {
 	return os.Remove(completePath)
 }
 
-func (l Local) Rename(_ context.Context, src, dst string) error {
-	src = l.buildCompletePath(src)
-	dst = l.buildCompletePath(dst)
-	return os.Rename(src, dst)
-}
-
 func (l Local) Exist(_ context.Context, path string) (bool, error) {
 	completePath := l.buildCompletePath(path)
 	if _, err := os.Stat(completePath); err != nil {

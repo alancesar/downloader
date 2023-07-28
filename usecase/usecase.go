@@ -39,7 +39,8 @@ func NewDownload(downloader Downloader, db Database, interceptors map[string]Int
 }
 
 func (d Download) Execute(ctx context.Context, m media.Media, provider string) error {
-	if exists, err := d.db.ExistByURL(ctx, m.URL); err != nil {
+	sourceURL := m.URL
+	if exists, err := d.db.ExistByURL(ctx, sourceURL); err != nil {
 		return err
 	} else if exists {
 		return nil
@@ -61,7 +62,7 @@ func (d Download) Execute(ctx context.Context, m media.Media, provider string) e
 	md, err := d.downloader.GetMetadata(m)
 	if err != nil {
 		if errors.Is(err, status.ErrNotFound) {
-			return d.db.Save(ctx, m.URL, "")
+			return d.db.Save(ctx, sourceURL, "")
 		}
 		return err
 	}
@@ -70,7 +71,7 @@ func (d Download) Execute(ctx context.Context, m media.Media, provider string) e
 		if exists, err := d.db.ExistsByETag(ctx, md.ETag); err != nil {
 			return err
 		} else if exists {
-			return d.db.Save(ctx, m.URL, md.ETag)
+			return d.db.Save(ctx, sourceURL, md.ETag)
 		}
 	}
 
@@ -82,5 +83,5 @@ func (d Download) Execute(ctx context.Context, m media.Media, provider string) e
 		return err
 	}
 
-	return d.db.Save(ctx, m.URL, md.ETag)
+	return d.db.Save(ctx, sourceURL, md.ETag)
 }
