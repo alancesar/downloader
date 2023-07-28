@@ -7,6 +7,8 @@ import (
 	"github.com/alancesar/downloader/internal/database"
 	"github.com/alancesar/downloader/internal/storage"
 	"github.com/alancesar/downloader/pkg/media"
+	"github.com/alancesar/downloader/pkg/redgifs"
+	"github.com/alancesar/downloader/pkg/ticker"
 	"github.com/alancesar/downloader/pkg/transport"
 	"github.com/alancesar/downloader/usecase"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -21,6 +23,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -48,8 +51,22 @@ func main() {
 		Transport: transport.NewUserAgentRoundTripper("downloaddit/v0", http.DefaultTransport),
 	}
 
+	redGIFsAuthProvider := redgifs.NewClient(defaultClient)
+	tokenTicker := ticker.NewToken(func() string {
+		token, _ := redGIFsAuthProvider.RetrieveToken()
+		return "Bearer " + token
+	}, time.Minute*10)
+	redGIFsAuthClient := &http.Client{
+		Transport: transport.NewAuthorizationRoundTripper(tokenTicker.Get, defaultClient.Transport),
+	}
+	redGIFsClient := redgifs.NewClient(redGIFsAuthClient)
+	interceptor := redgifs.NewInterceptor(redGIFsClient)
+	interceptors := map[string]usecase.Interceptor{
+		"redgifs": interceptor,
+	}
+
 	localDownloader := media.NewDownloader(localStorage, progressBar, defaultClient)
-	useCase := usecase.NewDownload(localDownloader, gormDatabase)
+	useCase := usecase.NewDownload(localDownloader, gormDatabase, interceptors)
 
 	consumer := func(m media.Media, provider string) error {
 		if err := useCase.Execute(ctx, m, provider); err != nil {

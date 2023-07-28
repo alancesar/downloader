@@ -19,16 +19,22 @@ type (
 		GetMetadata(m media.Media) (media.Metadata, error)
 	}
 
+	Interceptor interface {
+		Intercept(ctx context.Context, m media.Media) (media.Media, error)
+	}
+
 	Download struct {
-		db         Database
-		downloader Downloader
+		db           Database
+		downloader   Downloader
+		interceptors map[string]Interceptor
 	}
 )
 
-func NewDownload(downloader Downloader, db Database) *Download {
+func NewDownload(downloader Downloader, db Database, interceptors map[string]Interceptor) *Download {
 	return &Download{
-		downloader: downloader,
-		db:         db,
+		downloader:   downloader,
+		db:           db,
+		interceptors: interceptors,
 	}
 }
 
@@ -37,6 +43,15 @@ func (d Download) Execute(ctx context.Context, m media.Media, provider string) e
 		return err
 	} else if exists {
 		return nil
+	}
+
+	if provider != "" {
+		var err error
+		if interceptor, ok := d.interceptors[provider]; ok {
+			if m, err = interceptor.Intercept(ctx, m); err != nil {
+				return err
+			}
+		}
 	}
 
 	md, err := d.downloader.GetMetadata(m)
