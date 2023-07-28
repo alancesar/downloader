@@ -110,8 +110,7 @@ func main() {
 		for {
 			select {
 			case err = <-notify:
-				log.Println("connection lost", err)
-				break
+				log.Fatalln("connection lost", err)
 			case <-ctx.Done():
 				log.Println("shutting down...")
 				stop()
