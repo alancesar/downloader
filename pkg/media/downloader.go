@@ -44,7 +44,12 @@ func (d Downloader) Download(ctx context.Context, media Media) error {
 		return nil
 	}
 
-	res, err := d.client.Get(media.URL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, media.URL, nil)
+	if err != nil {
+		return err
+	}
+
+	res, err := d.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -69,17 +74,30 @@ func (d Downloader) write(ctx context.Context, response *http.Response, media Me
 		return err
 	}
 
-	defer func() {
-		_ = writer.Close()
+	done := make(chan error)
+
+	go func() {
+		multiWriter := io.MultiWriter(writer, d.pb(response, fmt.Sprintf("%32.32s", media.Filename)))
+		if _, err = io.Copy(multiWriter, response.Body); err != nil {
+			_ = d.storage.Remove(ctx, temp)
+			done <- err
+			return
+		}
+
+		done <- d.storage.Rename(ctx, temp, media.Path())
 	}()
 
-	multiWriter := io.MultiWriter(writer, d.pb(response, fmt.Sprintf("%32.32s", media.Filename)))
-	if _, err = io.Copy(multiWriter, response.Body); err != nil {
-		_ = d.storage.Remove(ctx, temp)
-		return err
+	for {
+		select {
+		case <-ctx.Done():
+			_ = writer.Close()
+			_ = d.storage.Remove(ctx, temp)
+			return ctx.Err()
+		case err := <-done:
+			_ = writer.Close()
+			return err
+		}
 	}
-
-	return d.storage.Rename(ctx, temp, media.Path())
 }
 
 func (d Downloader) GetMetadata(media Media) (Metadata, error) {
