@@ -45,3 +45,14 @@ func (m Media) BuildFilename(contentType ContentType) string {
 func (m Media) Path() string {
 	return path.Join(path.Join(m.Parent...), m.Filename)
 }
+
+func (m Media) CleanURL() string {
+	parsedURL, err := url.Parse(m.URL)
+	if err != nil {
+		return m.URL
+	}
+
+	parsedURL.RawQuery = ""
+	parsedURL.RawFragment = ""
+	return parsedURL.String()
+}

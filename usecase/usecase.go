@@ -33,7 +33,8 @@ func NewDownload(downloader Downloader, db Database) *Download {
 }
 
 func (d Download) Execute(ctx context.Context, m media.Media) error {
-	if exists, err := d.db.ExistByURL(ctx, m.URL); err != nil {
+	cleanURL := m.CleanURL()
+	if exists, err := d.db.ExistByURL(ctx, cleanURL); err != nil {
 		return err
 	} else if exists {
 		return nil
@@ -42,7 +43,7 @@ func (d Download) Execute(ctx context.Context, m media.Media) error {
 	md, err := d.downloader.GetMetadata(m)
 	if err != nil {
 		if errors.Is(err, status.ErrNotFound) {
-			return d.db.Save(ctx, m.URL, "")
+			return d.db.Save(ctx, cleanURL, "")
 		}
 		return err
 	}
@@ -51,7 +52,7 @@ func (d Download) Execute(ctx context.Context, m media.Media) error {
 		if exists, err := d.db.ExistByETag(ctx, md.ETag); err != nil {
 			return err
 		} else if exists {
-			return d.db.Save(ctx, m.URL, md.ETag)
+			return d.db.Save(ctx, cleanURL, md.ETag)
 		}
 	}
 
@@ -63,5 +64,5 @@ func (d Download) Execute(ctx context.Context, m media.Media) error {
 		return err
 	}
 
-	return d.db.Save(ctx, m.URL, md.ETag)
+	return d.db.Save(ctx, cleanURL, md.ETag)
 }
