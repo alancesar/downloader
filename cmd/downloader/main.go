@@ -7,8 +7,6 @@ import (
 	"github.com/alancesar/downloader/internal/database"
 	"github.com/alancesar/downloader/internal/storage"
 	"github.com/alancesar/downloader/pkg/media"
-	"github.com/alancesar/downloader/pkg/redgifs"
-	"github.com/alancesar/downloader/pkg/ticker"
 	"github.com/alancesar/downloader/pkg/transport"
 	"github.com/alancesar/downloader/usecase"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -23,7 +21,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 )
 
 func main() {
@@ -51,25 +48,11 @@ func main() {
 		Transport: transport.NewUserAgentRoundTripper("downloaddit/v0", http.DefaultTransport),
 	}
 
-	redGIFsAuthProvider := redgifs.NewClient(defaultClient)
-	tokenTicker := ticker.NewToken(func() string {
-		token, _ := redGIFsAuthProvider.RetrieveToken()
-		return "Bearer " + token
-	}, time.Minute*10)
-	redGIFsAuthClient := &http.Client{
-		Transport: transport.NewAuthorizationRoundTripper(tokenTicker.Get, defaultClient.Transport),
-	}
-	redGIFsClient := redgifs.NewClient(redGIFsAuthClient)
-	interceptor := redgifs.NewInterceptor(redGIFsClient)
-	interceptors := map[string]usecase.Interceptor{
-		"redgifs": interceptor,
-	}
-
 	localDownloader := media.NewDownloader(localStorage, progressBar, defaultClient)
-	useCase := usecase.NewDownload(localDownloader, gormDatabase, interceptors)
+	useCase := usecase.NewDownload(localDownloader, gormDatabase)
 
-	consumer := func(m media.Media, provider string) error {
-		if err := useCase.Execute(ctx, m, provider); err != nil {
+	consumer := func(m media.Media) error {
+		if err := useCase.Execute(ctx, m); err != nil {
 			log.Println("failed to consume message:", err)
 			return err
 		}
@@ -110,7 +93,8 @@ func main() {
 		for {
 			select {
 			case err = <-notify:
-				log.Fatalln("connection lost", err)
+				log.Println("connection lost", err)
+				break
 			case <-ctx.Done():
 				log.Println("shutting down...")
 				stop()
@@ -118,11 +102,6 @@ func main() {
 				_ = amqpConnection.Close()
 				log.Fatalln("good bye")
 			case message := <-messages:
-				var provider string
-				if p := message.Headers["provider"]; p != nil {
-					provider = p.(string)
-				}
-
 				var m media.Media
 				if err := json.Unmarshal(message.Body, &m); err != nil {
 					log.Println("failed to unmarshal message", err)
@@ -130,7 +109,7 @@ func main() {
 					continue
 				}
 
-				if err := consumer(m, provider); err != nil {
+				if err := consumer(m); err != nil {
 					fmt.Println(err)
 					_ = message.Nack(false, true)
 					continue
