@@ -10,7 +10,7 @@ import (
 type (
 	Database interface {
 		ExistByURL(ctx context.Context, url string) (bool, error)
-		ExistsByETag(ctx context.Context, etag string) (bool, error)
+		ExistByETag(ctx context.Context, etag string) (bool, error)
 		Save(ctx context.Context, url, etag string) error
 	}
 
@@ -48,7 +48,7 @@ func (d Download) Execute(ctx context.Context, m media.Media) error {
 	}
 
 	if md.ETag != "" {
-		if exists, err := d.db.ExistsByETag(ctx, md.ETag); err != nil {
+		if exists, err := d.db.ExistByETag(ctx, md.ETag); err != nil {
 			return err
 		} else if exists {
 			return d.db.Save(ctx, m.URL, md.ETag)

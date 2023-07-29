@@ -39,7 +39,7 @@ func (g Gorm) ExistByURL(ctx context.Context, url string) (bool, error) {
 	return true, nil
 }
 
-func (g Gorm) ExistsByETag(ctx context.Context, etag string) (bool, error) {
+func (g Gorm) ExistByETag(ctx context.Context, etag string) (bool, error) {
 	download := internal.Download{}
 	tx := g.db.WithContext(ctx).
 		Where("e_tag = ?", etag).
